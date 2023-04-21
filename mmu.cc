@@ -2,6 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
+#include <set>
 #include <cassert>
 
 #include "pager.hh"
@@ -94,16 +95,20 @@ void do_access(uint32_t vpage, bool is_write);
 void exit_proc(uint32_t procid);
 
 /* global variables */
-int frames;
-int tasks;
+int frames = 12;
+int num_of_tasks;
 
 frame_t frame_table[MAX_FRAMES];
 vector<Process> proc_vec;
 Process *current_process;
 Pager *pager;
+set<uint32_t> free_frame_pool;
 
 int main(int argc, char **args)
 {
+    // 0. initialize the free frame pool
+    for (uint32_t i = 0; i < frames; ++i)
+        free_frame_pool.insert(i);
     // 1. parse arguments
 
     // 2. read process info
@@ -115,7 +120,7 @@ int main(int argc, char **args)
     }
     istringstream sin;
     string line;
-    int num_of_tasks, num_of_vmas;
+    int num_of_vmas;
 
     get_next_line(fs, sin);
     sin >> num_of_tasks; // read number of processes
@@ -144,7 +149,7 @@ int main(int argc, char **args)
     uint32_t idx = 0;
     while (get_next_instruction(fs, sin, op, num))
     {
-        printf("%ld: ==> %c %ld\n", idx, op, num);
+        printf("%d: ==> %c %d\n", idx, op, num);
         ++idx;
         switch (op)
         {
@@ -180,7 +185,7 @@ bool page_fault_exception_handler(uint32_t vpage)
         return false;
 
     // get a new frame
-    uint32_t idx = pager->select_victim_frame();
+    uint32_t idx = get_frame();
 
     // unmap frame
     auto pid = frame_table[idx].proc_id;
@@ -215,6 +220,8 @@ bool page_fault_exception_handler(uint32_t vpage)
 
 void context_switch(uint32_t procid)
 {
+    assert(procid < num_of_tasks);
+    current_process = &proc_vec[procid];
 }
 
 void do_access(uint32_t vpage, bool is_write)
@@ -239,7 +246,16 @@ void exit_proc(uint32_t procid)
 
 static int get_frame()
 {
-    return 0;
+    int fidx = -1;
+
+    if (!free_frame_pool.empty())
+    {
+        fidx = *free_frame_pool.begin();
+        free_frame_pool.erase(fidx);
+    }
+    else
+        fidx = pager->select_victim_frame();
+    return fidx;
 }
 
 static void get_next_line(ifstream &fs, istringstream &sin)
