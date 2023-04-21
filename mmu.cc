@@ -12,7 +12,7 @@ const int MAX_VPAGES = 64;
 /* Class definition */ 
 using pte_t = struct 
 {
-    uint32_t valid : 1;
+    uint32_t present : 1;
     uint32_t refer : 1;
     uint32_t modified : 1;
     uint32_t write_prot : 1;
@@ -47,7 +47,7 @@ public:
         {
             cout << ' ' << i << ":";
             auto & page = page_table[i];
-            if (page.valid)
+            if (page.present)
             {
                 cout << (page.refer ? 'R' : '-');
                 cout << (page.modified ? 'R' : '-');
@@ -65,21 +65,30 @@ public:
     virtual int select_victim_frame() = 0;
 };
 
+
+
+/* static functions */
+static int get_frame();
+static void get_next_line(ifstream &, istringstream &);
+static bool get_next_instruction(ifstream &, istringstream &, char & op, uint32_t &);
+static void print_page_table();
+static void print_frame_table();
+
+/* Function */
+bool page_fault_exception_handler(uint32_t vpage);
+void context_switch(uint32_t procid);
+void do_read(uint32_t vpage);
+void do_write(uint32_t vpage);
+void exit_proc(uint32_t procid);
+
 /* global variables */
 int frames;
 int tasks;
 
 frame_t frame_table[MAX_FRAMES];
 vector<Process> proc_vec;
-
-/* static functions */
-static int get_frame();
-static void get_next_line(ifstream &, istringstream &);
-static bool get_next_instruction(ifstream &, istringstream &, char & operation, uint32_t & vpage);
-static void print_page_table();
-static void print_frame_table();
-
 Process * current_process;
+Pager *pager;
 
 int main(int argc, char ** args)
 {
@@ -132,17 +141,50 @@ int main(int argc, char ** args)
 
     // 3. read instruction
     char op;
-    uint32_t vpage;
+    uint32_t num;
     cout << "#### instruction simulation ######\n";
-    while (get_next_instruction(fs, sin, op, vpage))
+    while (get_next_instruction(fs, sin, op, num))
     {
-        cout << op << ' ' << vpage << endl;
+        cout << op << ' ' << num << endl;
+        // cout << 0: ==> c 0
+        switch(op)
+        {
+            case 'c':
+                context_switch(num);
+                break;
+            case 'r':
+                do_read(num);
+                break;
+            case 'w':
+                do_write(num);
+                break;
+            case 'e':
+                exit_proc(num);
+                break;
+            default:
+            {
+                cerr << "Invalid operation " << op << endl;
+                break;
+            }
+        }
     }
 
     fs.close();
 
     return 0;
 }
+
+
+bool page_fault_exception_handler(uint32_t vpage)
+{}
+void context_switch(uint32_t procid)
+{}
+void do_read(uint32_t vpage)
+{}
+void do_write(uint32_t vpage)
+{}
+void exit_proc(uint32_t procid)
+{}
 
 static int get_frame()
 {
@@ -166,7 +208,7 @@ static void get_next_line(ifstream & fs, istringstream & sin)
     exit(1);
 }
 
-static bool get_next_instruction(ifstream & fs, istringstream & sin, char & operation, uint32_t & vpage)
+static bool get_next_instruction(ifstream & fs, istringstream & sin, char & operation, uint32_t & num)
 {
     static string line;
     while (getline(fs, line))
@@ -177,7 +219,7 @@ static bool get_next_instruction(ifstream & fs, istringstream & sin, char & oper
         sin.str(line);
         assert(sin.str() == line);
         sin >> operation;
-        sin >> vpage;
+        sin >> num;
 
         return true;
     }
