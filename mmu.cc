@@ -9,8 +9,8 @@
 using namespace std;
 
 /* Constant */
-const int MAX_FRAMES = 128;
-const int MAX_VPAGES = 64;
+extern const int MAX_FRAMES = 128;
+extern const int MAX_VPAGES = 64;
 
 /* Class definition */
 using pte_t = struct
@@ -95,20 +95,24 @@ void do_access(uint32_t vpage, bool is_write);
 void exit_proc(uint32_t procid);
 
 /* global variables */
-int frames = 12;
-int num_of_tasks;
+uint32_t frames = 16;
+uint32_t num_of_tasks;
 
 frame_t frame_table[MAX_FRAMES];
 vector<Process> proc_vec;
-Process *current_process;
+Process *cur_proc;
+uint32_t cur_procid;
 Pager *pager;
 set<uint32_t> free_frame_pool;
 
 int main(int argc, char **args)
 {
-    // 0. initialize the free frame pool
+    // 0. initialize the free frame pool, frame table and pager
     for (uint32_t i = 0; i < frames; ++i)
         free_frame_pool.insert(i);
+    for (auto & frame : frame_table)
+        frame.proc_id = -1;
+    pager = new FifoPager(frames);
     // 1. parse arguments
 
     // 2. read process info
@@ -180,9 +184,12 @@ int main(int argc, char **args)
 
 bool page_fault_exception_handler(uint32_t vpage)
 {
-    int vma_idx = current_process->vpage_vma(vpage);
+    int vma_idx = cur_proc->vpage_vma(vpage);
     if (vma_idx == -1)
+    {
+        cout << " SEGV\n";
         return false;
+    }
 
     // get a new frame
     uint32_t idx = get_frame();
@@ -200,10 +207,24 @@ bool page_fault_exception_handler(uint32_t vpage)
             else
                 cout << " OUT" << endl;
             unmap_pte.pagedout = 1; // Flag that the page has been swapped out
+            unmap_pte.modified = 0;
         }
+        unmap_pte.present = 0; // reset present
     }
 
-    pte_t &pte = current_process->page_table[vpage];
+    pte_t &pte = cur_proc->page_table[vpage];
+
+    // set present
+    pte.present = 1; 
+    // set the file mapped and write protection bit
+    pte.fmapped = cur_proc->vmas[vma_idx].filemapped;
+    pte.write_prot = cur_proc->vmas[vma_idx].write_prot;
+    
+
+    // reverse map
+    frame_table[idx].proc_id = cur_procid;
+    frame_table[idx].vpage = vpage;
+
     if (pte.fmapped)
         cout << " FIN" << endl;
     else if (pte.pagedout)
@@ -211,9 +232,6 @@ bool page_fault_exception_handler(uint32_t vpage)
     else
         cout << " ZERO" << endl;
     cout << " MAP " << idx << endl;
-    // set the file mapped and write protection bit
-    pte.fmapped = current_process->vmas[vma_idx].filemapped;
-    pte.write_prot = current_process->vmas[vma_idx].write_prot;
 
     return true;
 }
@@ -221,7 +239,8 @@ bool page_fault_exception_handler(uint32_t vpage)
 void context_switch(uint32_t procid)
 {
     assert(procid < num_of_tasks);
-    current_process = &proc_vec[procid];
+    cur_proc = &proc_vec[procid];
+    cur_procid = procid;
 }
 
 void do_access(uint32_t vpage, bool is_write)
@@ -230,12 +249,17 @@ void do_access(uint32_t vpage, bool is_write)
     1. The page exists in memory
     2. a page fault exception was raised and successfully handled
     */
-    pte_t &pte = current_process->page_table[vpage];
+    pte_t &pte = cur_proc->page_table[vpage];
     if (pte.present || page_fault_exception_handler(vpage))
     {
         pte.refer = 1;
-        if (is_write && pte.write_prot)
-            cout << " SEGPROT" << endl;
+        if (is_write)
+        {
+            if (pte.write_prot)
+                cout << " SEGPROT" << endl;
+            else
+                pte.modified = 1;
+        }
     }
     // else, go to next instruction
 }
