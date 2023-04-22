@@ -30,6 +30,25 @@ using frame_t = struct
     uint32_t vpage;
 }; // freme type <proc_id:vpage>
 
+
+/* static functions */
+static int get_frame();
+static void get_next_line(ifstream &, istringstream &);
+static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t &);
+static void print_page_table();
+static void print_frame_table();
+static void print_process_statistics();
+
+
+/* global variables */
+// statistics
+unsigned long inst_count, ctx_switches, process_exits;
+unsigned long long cost;
+
+// flag
+bool O_flag, P_flag, F_flag, S_flag;
+
+
 class Process
 {
     friend bool page_fault_exception_handler(Process & proc, uint32_t vpage);
@@ -96,6 +115,7 @@ public:
                 if (pte.write_prot)
                 {
                     ++pstats.segprot;
+                    cost += 410;
                     step_msg += " SEGPROT\n";
                 }
                 else
@@ -123,10 +143,10 @@ public:
                 cout << i << ":";
                 cout << (page.refer ? 'R' : '-');
                 cout << (page.modified ? 'M' : '-');
-                cout << (page.pagedout ? 'S' : '-');
+                cout << (page.pagedout && !page.fmapped ? 'S' : '-');
             }
             else
-                cout << (page.pagedout ? '#' : '*');
+                cout << (page.pagedout && !page.fmapped ? '#' : '*');
         }
     }
 
@@ -147,21 +167,17 @@ public:
         cout << step_msg;
         step_msg = "";
     }
-}; // process type
 
-/* static functions */
-static int get_frame();
-static void get_next_line(ifstream &, istringstream &);
-static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t &);
-static void print_page_table();
-static void print_frame_table();
-static void print_process_statistics();
+    void print_28()
+    {
+        cout << page_table[28].pagedout<<endl;
+    }
+}; // process type
 
 /* Function */
 bool page_fault_exception_handler(Process & proc, uint32_t vpage);
 void context_switch(uint32_t procid);
 
-/* global variables */
 // input variable: number of frames and processes
 uint32_t frames = 16;
 uint32_t num_of_tasks;
@@ -172,13 +188,6 @@ Process *cur_proc;
 uint32_t cur_procid;
 Pager *pager;
 set<uint32_t> free_frame_pool;
-
-// statistics
-uint64_t inst_count, ctx_switches, process_exits;
-unsigned long long cost;
-
-// flag
-bool O_flag, P_flag, F_flag, S_flag;
 
 int main(int argc, char **args)
 {
@@ -228,22 +237,27 @@ int main(int argc, char **args)
     // 4. read instruction
     char op;
     uint32_t num;
-    uint32_t idx = 0;
     while (get_next_instruction(fs, sin, op, num))
     {
         switch (op)
         {
         case 'c':
             context_switch(num);
+            cost += 130;
+            ++ctx_switches;
             break;
         case 'r':
             cur_proc->do_access(num, false);
+            ++cost;
             break;
         case 'w':
             cur_proc->do_access(num, true);
+            ++cost;
             break;
         case 'e':
             proc_vec[num].exit_proc();
+            cost += 1230;
+            ++process_exits;
             break;
         default:
         {
@@ -253,10 +267,10 @@ int main(int argc, char **args)
         }
         if (O_flag)
         {
-            printf("%d: ==> %c %d\n", idx, op, num);
+            printf("%ld: ==> %c %d\n", inst_count, op, num);
             cur_proc->print_step_msg();
         }
-        ++idx;
+        ++inst_count;
     }
     if (P_flag)
         print_page_table();
@@ -275,6 +289,7 @@ bool page_fault_exception_handler(Process & proc, uint32_t vpage)
     if (vma_idx == -1)
     {
         ++proc.pstats.segv;
+        cost += 440;
         proc.step_msg += " SEGV\n";
         return false;
     }
@@ -289,17 +304,20 @@ bool page_fault_exception_handler(Process & proc, uint32_t vpage)
         auto & victim_proc = proc_vec[pid];
         proc.step_msg += " UNMAP " + to_string(pid) + ":" + to_string(frame_table[idx].vpage) + "\n";
         ++victim_proc.pstats.unmaps;
+        cost += 410;
         pte_t &unmap_pte =victim_proc.page_table[frame_table[idx].vpage];
         if (unmap_pte.modified) // whether need to swap out
         {
             if (unmap_pte.fmapped)
             {
                 ++victim_proc.pstats.fouts;
+                cost += 2800;
                 proc.step_msg += " FOUT\n";
             }
             else
             {
                 ++victim_proc.pstats.outs;
+                cost += 2750;
                 proc.step_msg += " OUT\n";
             }
             unmap_pte.pagedout = 1; // Flag that the page has been swapped out
@@ -323,19 +341,23 @@ bool page_fault_exception_handler(Process & proc, uint32_t vpage)
     if (pte.fmapped)
     {
         ++proc.pstats.fins;
+        cost += 2350;
         proc.step_msg += " FIN\n";
     }
     else if (pte.pagedout)
     {
         ++proc.pstats.ins;
+        cost += 3200;
         proc.step_msg += " IN\n";
     }
     else
     {
         ++proc.pstats.zeros;
+        cost += 150;
         proc.step_msg += " ZERO\n";
     }
     proc.step_msg += " MAP " + to_string(idx) + "\n";
+    cost += 350;
     ++proc.pstats.maps;
 
     return true;
