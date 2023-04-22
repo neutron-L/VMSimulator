@@ -36,10 +36,14 @@ class Process
 protected:
     struct VMA
     {
-        uint32_t starting_vpage;
-        uint32_t ending_vpage;
-        uint32_t write_prot;
-        uint32_t filemapped;
+        uint32_t starting_vpage{};
+        uint32_t ending_vpage{};
+        uint32_t write_prot{};
+        uint32_t filemapped{};
+
+        VMA(uint32_t s, uint32_t e, uint32_t w, uint32_t f) : starting_vpage(s), 
+            ending_vpage(e), write_prot(w), filemapped(f)
+        {}
     };
 
     struct Status 
@@ -70,25 +74,30 @@ protected:
         return -1;
     }
 
-public:
+private:
     pte_t page_table[MAX_VPAGES]{};
     vector<VMA> vmas{};
     Status pstats{};
+    string step_msg; // if O_flag is set, output it after each instruction is executed
 
+public:
     void do_access(uint32_t vpage, bool is_write)
     {
         /*
         1. The page exists in memory
         2. a page fault exception was raised and successfully handled
         */
-        pte_t &pte = cur_proc->page_table[vpage];
+        pte_t &pte = page_table[vpage];
         if (pte.present || page_fault_exception_handler(*this, vpage))
         {
             pte.refer = 1;
             if (is_write)
             {
                 if (pte.write_prot)
-                    cout << " SEGPROT" << endl;
+                {
+                    ++pstats.segprot;
+                    step_msg += " SEGPROT\n";
+                }
                 else
                     pte.modified = 1;
             }
@@ -96,15 +105,22 @@ public:
         // else, go to next instruction
     }
 
+    void add_vma(uint32_t s, uint32_t e, uint32_t w, uint32_t f)
+    {
+        vmas.emplace_back(VMA(s, e, w, f));
+    }
+
 
     void print_page_table() const
     {
         for (uint32_t i = 0; i < MAX_VPAGES; ++i)
         {
-            cout << ' ' << i << ":";
+            
             auto &page = page_table[i];
+            cout << " ";
             if (page.present)
             {
+                cout << i << ":";
                 cout << (page.refer ? 'R' : '-');
                 cout << (page.modified ? 'M' : '-');
                 cout << (page.pagedout ? 'S' : '-');
@@ -124,6 +140,12 @@ public:
     void exit_proc()
     {
 
+    }
+
+    void print_step_msg()
+    {
+        cout << step_msg;
+        step_msg = "";
     }
 }; // process type
 
@@ -152,11 +174,16 @@ Pager *pager;
 set<uint32_t> free_frame_pool;
 
 // statistics
-uint64_t inst_count, ctx_switches, process_exits, cost;
+uint64_t inst_count, ctx_switches, process_exits;
+unsigned long long cost;
+
+// flag
+bool O_flag, P_flag, F_flag, S_flag;
 
 int main(int argc, char **args)
 {
     // 1. parse arguments
+    O_flag = P_flag = F_flag = S_flag = true;
 
     // 2. initialize the free frame pool, frame table and pager
     for (uint32_t i = 0; i < frames; ++i)
@@ -181,19 +208,20 @@ int main(int argc, char **args)
     proc_vec.resize(num_of_tasks);
 
     // read process
+    uint32_t s, e, w, f;
     for (auto &proc : proc_vec)
     {
         get_next_line(fs, sin);
         sin >> num_of_vmas;
-        proc.vmas.resize(num_of_vmas);
         // read process vmas
-        for (auto &vma : proc.vmas)
+        while (num_of_vmas--)
         {
             get_next_line(fs, sin);
-            sin >> vma.starting_vpage;
-            sin >> vma.ending_vpage;
-            sin >> vma.write_prot;
-            sin >> vma.filemapped;
+            sin >> s;
+            sin >> e;
+            sin >> w;
+            sin >> f;
+            proc.add_vma(s, e, w, f);
         }
     }
 
@@ -203,8 +231,6 @@ int main(int argc, char **args)
     uint32_t idx = 0;
     while (get_next_instruction(fs, sin, op, num))
     {
-        printf("%d: ==> %c %d\n", idx, op, num);
-        ++idx;
         switch (op)
         {
         case 'c':
@@ -225,19 +251,31 @@ int main(int argc, char **args)
             break;
         }
         }
+        if (O_flag)
+        {
+            printf("%d: ==> %c %d\n", idx, op, num);
+            cur_proc->print_step_msg();
+        }
+        ++idx;
     }
-
+    if (P_flag)
+        print_page_table();
+    if (F_flag)
+        print_frame_table();
+    if (S_flag)
+        print_process_statistics();
     fs.close();
 
     return 0;
 }
 
-bool page_fault_exception_handler(Process & cur_proc, uint32_t vpage)
+bool page_fault_exception_handler(Process & proc, uint32_t vpage)
 {
-    int vma_idx = cur_proc.vpage_vma(vpage);
+    int vma_idx = proc.vpage_vma(vpage);
     if (vma_idx == -1)
     {
-        cout << " SEGV\n";
+        ++proc.pstats.segv;
+        proc.step_msg += " SEGV\n";
         return false;
     }
 
@@ -248,39 +286,57 @@ bool page_fault_exception_handler(Process & cur_proc, uint32_t vpage)
     auto pid = frame_table[idx].proc_id;
     if (pid != -1)
     {
-        printf(" UNMAP %d:%d\n", pid, frame_table[idx].vpage);
-        pte_t &unmap_pte = proc_vec[pid].page_table[frame_table[idx].vpage];
+        auto & victim_proc = proc_vec[pid];
+        proc.step_msg += " UNMAP " + to_string(pid) + ":" + to_string(frame_table[idx].vpage) + "\n";
+        ++victim_proc.pstats.unmaps;
+        pte_t &unmap_pte =victim_proc.page_table[frame_table[idx].vpage];
         if (unmap_pte.modified) // whether need to swap out
         {
             if (unmap_pte.fmapped)
-                cout << " FOUT" << endl;
+            {
+                ++victim_proc.pstats.fouts;
+                proc.step_msg += " FOUT\n";
+            }
             else
-                cout << " OUT" << endl;
+            {
+                ++victim_proc.pstats.outs;
+                proc.step_msg += " OUT\n";
+            }
             unmap_pte.pagedout = 1; // Flag that the page has been swapped out
             unmap_pte.modified = 0;
         }
         unmap_pte.present = 0; // reset present
     }
 
-    pte_t &pte = cur_proc.page_table[vpage];
+    pte_t &pte = proc.page_table[vpage];
 
     // set present
     pte.present = 1;
     // set the file mapped and write protection bit
-    pte.fmapped = cur_proc.vmas[vma_idx].filemapped;
-    pte.write_prot = cur_proc.vmas[vma_idx].write_prot;
+    pte.fmapped = proc.vmas[vma_idx].filemapped;
+    pte.write_prot = proc.vmas[vma_idx].write_prot;
 
     // reverse map
     frame_table[idx].proc_id = cur_procid;
     frame_table[idx].vpage = vpage;
 
     if (pte.fmapped)
-        cout << " FIN" << endl;
+    {
+        ++proc.pstats.fins;
+        proc.step_msg += " FIN\n";
+    }
     else if (pte.pagedout)
-        cout << " IN" << endl;
+    {
+        ++proc.pstats.ins;
+        proc.step_msg += " IN\n";
+    }
     else
-        cout << " ZERO" << endl;
-    cout << " MAP " << idx << endl;
+    {
+        ++proc.pstats.zeros;
+        proc.step_msg += " ZERO\n";
+    }
+    proc.step_msg += " MAP " + to_string(idx) + "\n";
+    ++proc.pstats.maps;
 
     return true;
 }
@@ -351,14 +407,14 @@ static void print_page_table()
         proc_vec[i].print_page_table();
         cout << endl;
     }
-    cout << endl;
 }
 
 static void print_frame_table()
 {
     cout << "FT:";
-    for (auto &frame : frame_table)
+    for (uint32_t i = 0; i < frames; ++i)
     {
+        auto & frame = frame_table[i];
         if (frame.proc_id == -1)
             cout << " *";
         else
@@ -371,7 +427,7 @@ static void print_process_statistics()
 {
     for (uint32_t i = 0; i < num_of_tasks; ++i)
     {
-        printf("PT[%d]:", i);
+        printf("PROC[%d]:", i);
         proc_vec[i].print_statistics();
     }
     printf("TOTALCOST %lu %lu %lu %llu %lu\n", 
