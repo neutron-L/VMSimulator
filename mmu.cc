@@ -4,8 +4,10 @@
 #include <vector>
 #include <set>
 #include <cassert>
+#include <unistd.h>
 
 #include "pager.hh"
+#include <cstring>
 using namespace std;
 
 /* Constant */
@@ -30,8 +32,8 @@ using frame_t = struct
     uint32_t vpage;
 }; // freme type <proc_id:vpage>
 
-
 /* static functions */
+static void parse_args(int argc, char **argv);
 static int get_frame();
 static void get_next_line(ifstream &, istringstream &);
 static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t &);
@@ -39,19 +41,15 @@ static void print_page_table();
 static void print_frame_table();
 static void print_process_statistics();
 
-
 /* global variables */
 // statistics
 unsigned long inst_count, ctx_switches, process_exits;
 unsigned long long cost;
 
-// flag
-bool O_flag, P_flag, F_flag, S_flag;
-
-
 class Process
 {
-    friend bool page_fault_exception_handler(Process & proc, uint32_t vpage);
+    friend bool page_fault_exception_handler(Process &proc, uint32_t vpage);
+
 protected:
     struct VMA
     {
@@ -60,12 +58,13 @@ protected:
         uint32_t write_prot{};
         uint32_t filemapped{};
 
-        VMA(uint32_t s, uint32_t e, uint32_t w, uint32_t f) : starting_vpage(s), 
-            ending_vpage(e), write_prot(w), filemapped(f)
-        {}
+        VMA(uint32_t s, uint32_t e, uint32_t w, uint32_t f) : starting_vpage(s),
+                                                              ending_vpage(e), write_prot(w), filemapped(f)
+        {
+        }
     };
 
-    struct Status 
+    struct Status
     {
         uint64_t unmaps;
         uint64_t maps;
@@ -130,12 +129,11 @@ public:
         vmas.emplace_back(VMA(s, e, w, f));
     }
 
-
     void print_page_table() const
     {
         for (uint32_t i = 0; i < MAX_VPAGES; ++i)
         {
-            
+
             auto &page = page_table[i];
             cout << " ";
             if (page.present)
@@ -152,14 +150,13 @@ public:
 
     void print_statistics()
     {
-        printf(" U=%lu M=%lu I=%lu O=%lu FI=%lu FO=%lu Z=%lu SV=%lu SP=%lu\n", 
-            pstats.unmaps, pstats.maps, pstats.ins, pstats.outs,
-            pstats.fins, pstats.fouts, pstats.zeros, pstats.segv, pstats.segprot);
+        printf(" U=%lu M=%lu I=%lu O=%lu FI=%lu FO=%lu Z=%lu SV=%lu SP=%lu\n",
+               pstats.unmaps, pstats.maps, pstats.ins, pstats.outs,
+               pstats.fins, pstats.fouts, pstats.zeros, pstats.segv, pstats.segprot);
     }
 
     void exit_proc()
     {
-
     }
 
     void print_step_msg()
@@ -170,12 +167,12 @@ public:
 
     void print_28()
     {
-        cout << page_table[28].pagedout<<endl;
+        cout << page_table[28].pagedout << endl;
     }
 }; // process type
 
 /* Function */
-bool page_fault_exception_handler(Process & proc, uint32_t vpage);
+bool page_fault_exception_handler(Process &proc, uint32_t vpage);
 void context_switch(uint32_t procid);
 
 // input variable: number of frames and processes
@@ -189,10 +186,14 @@ uint32_t cur_procid;
 Pager *pager;
 set<uint32_t> free_frame_pool;
 
-int main(int argc, char **args)
+// flag
+bool O_flag, P_flag, F_flag, S_flag, x_flag, y_flag, f_flag, a_flag;
+string infile, rfile;
+
+int main(int argc, char **argv)
 {
     // 1. parse arguments
-    O_flag = P_flag = F_flag = S_flag = true;
+    parse_args(argc, argv);
 
     // 2. initialize the free frame pool, frame table and pager
     for (uint32_t i = 0; i < frames; ++i)
@@ -202,10 +203,9 @@ int main(int argc, char **args)
     pager = new FifoPager(frames);
 
     // 3. read process info
-    ifstream fs(args[1]);
+    ifstream fs(infile);
     if (!fs.is_open())
     {
-        cerr << "Fail to open file " << args[1] << endl;
         exit(1);
     }
     istringstream sin;
@@ -279,11 +279,12 @@ int main(int argc, char **args)
     if (S_flag)
         print_process_statistics();
     fs.close();
+    delete pager;
 
     return 0;
 }
 
-bool page_fault_exception_handler(Process & proc, uint32_t vpage)
+bool page_fault_exception_handler(Process &proc, uint32_t vpage)
 {
     int vma_idx = proc.vpage_vma(vpage);
     if (vma_idx == -1)
@@ -301,11 +302,11 @@ bool page_fault_exception_handler(Process & proc, uint32_t vpage)
     auto pid = frame_table[idx].proc_id;
     if (pid != -1)
     {
-        auto & victim_proc = proc_vec[pid];
+        auto &victim_proc = proc_vec[pid];
         proc.step_msg += " UNMAP " + to_string(pid) + ":" + to_string(frame_table[idx].vpage) + "\n";
         ++victim_proc.pstats.unmaps;
         cost += 410;
-        pte_t &unmap_pte =victim_proc.page_table[frame_table[idx].vpage];
+        pte_t &unmap_pte = victim_proc.page_table[frame_table[idx].vpage];
         if (unmap_pte.modified) // whether need to swap out
         {
             if (unmap_pte.fmapped)
@@ -370,7 +371,82 @@ void context_switch(uint32_t procid)
     cur_procid = procid;
 }
 
+static void parse_args(int argc, char **argv)
+{
+    int o;
+    const char *optstring = "f:a:o:";
+    char algo;
+    while ((o = getopt(argc, argv, optstring)) != -1)
+    {
+        switch (o)
+        {
+        case 'f':
+            frames = stoi(optarg);
+            // cout << "frames: " << frames << endl;
+            break;
+        case 'a':
+            algo = optarg[0];
+            // cout << "algo: " << algo << endl;
+            break;
+        case 'o':
+        {
+            // cout << "O = " << optarg << endl;
+            O_flag = strchr(optarg, 'O') != NULL;
+            P_flag = strchr(optarg, 'P') != NULL;
+            F_flag = strchr(optarg, 'F') != NULL;
+            S_flag = strchr(optarg, 'S') != NULL;
+            x_flag = strchr(optarg, 'x') != NULL;
+            y_flag = strchr(optarg, 'y') != NULL;
+            f_flag = strchr(optarg, 'f') != NULL;
+            a_flag = strchr(optarg, 'a') != NULL;
+        }
+        break;
+        default:
+        {
+            cerr << "invalid option " << o << endl;
+            exit(1);
+        }
+        }
+    }
 
+    infile = argv[argc - 2];
+    rfile = argv[argc - 1];
+    // cout << infile << ' ' << rfile << endl;
+
+    switch (algo)
+    {
+    case 'a':
+        // pager = new AgingPager();
+        break;
+    case 'c':
+        // pager = new ClockPager();
+        break;
+    case 'e':
+        // pager = new ESCPager();
+        break;
+    case 'f':
+        pager = new FifoPager(frames);
+        break;
+    case 'r':
+    {
+        ifstream fin(rfile);
+        if (!fin.is_open())
+        {
+            cerr << "Fail to open " << rfile << endl;
+            exit(1);
+        }
+        pager = new RandomPager(frames, fin);
+        fin.close();
+    }
+    break;
+    case 'w':
+        // pager = new WorkingSetPager();
+        break;
+
+    default:
+        break;
+    }
+}
 
 static int get_frame()
 {
@@ -436,7 +512,7 @@ static void print_frame_table()
     cout << "FT:";
     for (uint32_t i = 0; i < frames; ++i)
     {
-        auto & frame = frame_table[i];
+        auto &frame = frame_table[i];
         if (frame.proc_id == -1)
             cout << " *";
         else
@@ -452,6 +528,6 @@ static void print_process_statistics()
         printf("PROC[%d]:", i);
         proc_vec[i].print_statistics();
     }
-    printf("TOTALCOST %lu %lu %lu %llu %lu\n", 
-        inst_count, ctx_switches, process_exits, cost, sizeof(pte_t));
+    printf("TOTALCOST %lu %lu %lu %llu %lu\n",
+           inst_count, ctx_switches, process_exits, cost, sizeof(pte_t));
 }
