@@ -32,6 +32,7 @@ using frame_t = struct
 
 class Process
 {
+    friend bool page_fault_exception_handler(Process & proc, uint32_t vpage);
 protected:
     struct VMA
     {
@@ -41,9 +42,18 @@ protected:
         uint32_t filemapped;
     };
 
-public:
-    pte_t page_table[MAX_VPAGES];
-    vector<VMA> vmas;
+    struct Status 
+    {
+        uint64_t unmaps;
+        uint64_t maps;
+        uint64_t ins;
+        uint64_t outs;
+        uint64_t fins;
+        uint64_t fouts;
+        uint64_t zeros;
+        uint64_t segv;
+        uint64_t segprot;
+    };
 
     // Check if the virtual page is located in a valid VMA,
     // if it is in a valid vma, return the vma`s index, else return -1
@@ -60,12 +70,39 @@ public:
         return -1;
     }
 
+public:
+    pte_t page_table[MAX_VPAGES]{};
+    vector<VMA> vmas{};
+    Status pstats{};
+
+    void do_access(uint32_t vpage, bool is_write)
+    {
+        /*
+        1. The page exists in memory
+        2. a page fault exception was raised and successfully handled
+        */
+        pte_t &pte = cur_proc->page_table[vpage];
+        if (pte.present || page_fault_exception_handler(*this, vpage))
+        {
+            pte.refer = 1;
+            if (is_write)
+            {
+                if (pte.write_prot)
+                    cout << " SEGPROT" << endl;
+                else
+                    pte.modified = 1;
+            }
+        }
+        // else, go to next instruction
+    }
+
+
     void print_page_table() const
     {
         for (uint32_t i = 0; i < MAX_VPAGES; ++i)
         {
             cout << ' ' << i << ":";
-            auto & page = page_table[i];
+            auto &page = page_table[i];
             if (page.present)
             {
                 cout << (page.refer ? 'R' : '-');
@@ -76,10 +113,19 @@ public:
                 cout << (page.pagedout ? '#' : '*');
         }
     }
+
+    void print_statistics()
+    {
+        printf(" U=%lu M=%lu I=%lu O=%lu FI=%lu FO=%lu Z=%lu SV=%lu SP=%lu\n", 
+            pstats.unmaps, pstats.maps, pstats.ins, pstats.outs,
+            pstats.fins, pstats.fouts, pstats.zeros, pstats.segv, pstats.segprot);
+    }
+
+    void exit_proc()
+    {
+
+    }
 }; // process type
-
-
-
 
 /* static functions */
 static int get_frame();
@@ -87,14 +133,14 @@ static void get_next_line(ifstream &, istringstream &);
 static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t &);
 static void print_page_table();
 static void print_frame_table();
+static void print_process_statistics();
 
 /* Function */
-bool page_fault_exception_handler(uint32_t vpage);
+bool page_fault_exception_handler(Process & proc, uint32_t vpage);
 void context_switch(uint32_t procid);
-void do_access(uint32_t vpage, bool is_write);
-void exit_proc(uint32_t procid);
 
 /* global variables */
+// input variable: number of frames and processes
 uint32_t frames = 16;
 uint32_t num_of_tasks;
 
@@ -105,17 +151,21 @@ uint32_t cur_procid;
 Pager *pager;
 set<uint32_t> free_frame_pool;
 
+// statistics
+uint64_t inst_count, ctx_switches, process_exits, cost;
+
 int main(int argc, char **args)
 {
-    // 0. initialize the free frame pool, frame table and pager
-    for (uint32_t i = 0; i < frames; ++i)
-        free_frame_pool.insert(i);
-    for (auto & frame : frame_table)
-        frame.proc_id = -1;
-    pager = new FifoPager(frames);
     // 1. parse arguments
 
-    // 2. read process info
+    // 2. initialize the free frame pool, frame table and pager
+    for (uint32_t i = 0; i < frames; ++i)
+        free_frame_pool.insert(i);
+    for (auto &frame : frame_table)
+        frame.proc_id = -1;
+    pager = new FifoPager(frames);
+
+    // 3. read process info
     ifstream fs(args[1]);
     if (!fs.is_open())
     {
@@ -147,7 +197,7 @@ int main(int argc, char **args)
         }
     }
 
-    // 3. read instruction
+    // 4. read instruction
     char op;
     uint32_t num;
     uint32_t idx = 0;
@@ -161,13 +211,13 @@ int main(int argc, char **args)
             context_switch(num);
             break;
         case 'r':
-            do_access(num, false);
+            cur_proc->do_access(num, false);
             break;
         case 'w':
-            do_access(num, true);
+            cur_proc->do_access(num, true);
             break;
         case 'e':
-            exit_proc(num);
+            proc_vec[num].exit_proc();
             break;
         default:
         {
@@ -182,9 +232,9 @@ int main(int argc, char **args)
     return 0;
 }
 
-bool page_fault_exception_handler(uint32_t vpage)
+bool page_fault_exception_handler(Process & cur_proc, uint32_t vpage)
 {
-    int vma_idx = cur_proc->vpage_vma(vpage);
+    int vma_idx = cur_proc.vpage_vma(vpage);
     if (vma_idx == -1)
     {
         cout << " SEGV\n";
@@ -212,14 +262,13 @@ bool page_fault_exception_handler(uint32_t vpage)
         unmap_pte.present = 0; // reset present
     }
 
-    pte_t &pte = cur_proc->page_table[vpage];
+    pte_t &pte = cur_proc.page_table[vpage];
 
     // set present
-    pte.present = 1; 
+    pte.present = 1;
     // set the file mapped and write protection bit
-    pte.fmapped = cur_proc->vmas[vma_idx].filemapped;
-    pte.write_prot = cur_proc->vmas[vma_idx].write_prot;
-    
+    pte.fmapped = cur_proc.vmas[vma_idx].filemapped;
+    pte.write_prot = cur_proc.vmas[vma_idx].write_prot;
 
     // reverse map
     frame_table[idx].proc_id = cur_procid;
@@ -243,30 +292,7 @@ void context_switch(uint32_t procid)
     cur_procid = procid;
 }
 
-void do_access(uint32_t vpage, bool is_write)
-{
-    /*
-    1. The page exists in memory
-    2. a page fault exception was raised and successfully handled
-    */
-    pte_t &pte = cur_proc->page_table[vpage];
-    if (pte.present || page_fault_exception_handler(vpage))
-    {
-        pte.refer = 1;
-        if (is_write)
-        {
-            if (pte.write_prot)
-                cout << " SEGPROT" << endl;
-            else
-                pte.modified = 1;
-        }
-    }
-    // else, go to next instruction
-}
 
-void exit_proc(uint32_t procid)
-{
-}
 
 static int get_frame()
 {
@@ -319,6 +345,13 @@ static bool get_next_instruction(ifstream &fs, istringstream &sin, char &operati
 
 static void print_page_table()
 {
+    for (uint32_t i = 0; i < num_of_tasks; ++i)
+    {
+        printf("PT[%d]:", i);
+        proc_vec[i].print_page_table();
+        cout << endl;
+    }
+    cout << endl;
 }
 
 static void print_frame_table()
@@ -332,4 +365,15 @@ static void print_frame_table()
             cout << " " << frame.proc_id << ":" << frame.vpage;
     }
     cout << endl;
+}
+
+static void print_process_statistics()
+{
+    for (uint32_t i = 0; i < num_of_tasks; ++i)
+    {
+        printf("PT[%d]:", i);
+        proc_vec[i].print_statistics();
+    }
+    printf("TOTALCOST %lu %lu %lu %llu %lu\n", 
+        inst_count, ctx_switches, process_exits, cost, sizeof(pte_t));
 }
