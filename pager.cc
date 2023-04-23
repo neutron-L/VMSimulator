@@ -153,7 +153,35 @@ void ClockPager::print_info()
 /* WorkingSetPager */
 uint32_t WorkingSetPager::select_victim_frame()
 {
-    return 0;
+    uint32_t start = hand;
+    victim = hand;
+
+    while (true)
+    {
+        // check refer bit
+        if (get_rbit(hand))
+        {
+            set_frame_timelastuse(hand, inst_count);
+            reset_rbit(hand);
+        }
+        else
+        {
+            if (inst_count - get_frame_timelastuse(hand) >= 50)
+            {
+                victim = hand;
+                break;
+            }
+            else if (get_frame_timelastuse(hand) < get_frame_timelastuse(victim))
+                victim = hand;
+        }
+        hand = (hand + 1) % frames;
+        // break
+        if (hand == start)
+            break;
+    }
+    hand = (victim + 1) % frames;
+
+    return victim;
 }
 
 void WorkingSetPager::print_info()

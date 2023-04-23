@@ -32,6 +32,7 @@ using frame_t = struct
     int proc_id; // if proc_id is -1, means it has not been mapped to a vpage
     uint32_t vpage{};
     uint32_t age{};
+    uint32_t timelastuse{};
 }; // freme type <proc_id:vpage>
 
 /* static functions */
@@ -42,7 +43,6 @@ static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t
 static void print_page_table();
 static void print_frame_table();
 static void print_process_statistics();
-void update_frame_age();
 
 frame_t frame_table[MAX_FRAMES];
 deque<uint32_t> free_frame_pool;
@@ -231,6 +231,12 @@ uint32_t get_rbit(uint32_t idx);
 uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
 uint32_t get_frame_age(uint32_t);
+void update_frame_age();
+
+uint32_t get_frame_timelastuse(uint32_t);
+void set_frame_timelastuse(uint32_t, uint32_t);
+
+
 
 /* For pager to access the reference of */
 // input variable: number of frames and processes
@@ -415,6 +421,8 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
     frame_table[idx].vpage = vpage;
     // clear age
     frame_table[idx].age = 0;
+    // set time
+    frame_table[idx].timelastuse = inst_count;
 
     if (pte.fmapped)
     {
@@ -518,7 +526,7 @@ static void parse_args(int argc, char **argv)
     }
     break;
     case 'w':
-        // pager = new WorkingSetPager();
+        pager = new WorkingSetPager(frames);
         break;
 
     default:
@@ -647,4 +655,18 @@ void update_frame_age()
             frame_table[i].age |= get_rbit(i) << 31;
             reset_rbit(i);
         }
+}
+
+
+
+uint32_t get_frame_timelastuse(uint32_t idx)
+{
+    assert(frame_table[idx].proc_id != -1);
+    return frame_table[idx].timelastuse;
+}
+
+void set_frame_timelastuse(uint32_t idx, uint32_t time)
+{
+    assert(frame_table[idx].proc_id != -1);
+    frame_table[idx].timelastuse = time;
 }
