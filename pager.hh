@@ -7,10 +7,11 @@
 
 #include "pager.hh"
 
-//
+// Extern functions
 uint32_t get_rbit(uint32_t idx);
 uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
+
 
 /* Abstract Pager Class */
 class Pager
@@ -22,6 +23,8 @@ public:
     Pager(uint32_t & f) : frames(f) {}
     virtual uint32_t select_victim_frame() = 0;
     virtual void print_info() const = 0;
+
+    virtual ~Pager()=default;
 };
 
 class FifoPager : public Pager

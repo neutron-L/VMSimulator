@@ -42,7 +42,7 @@ static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t
 static void print_page_table();
 static void print_frame_table();
 static void print_process_statistics();
-static void update_frame_age(uint32_t vpage);
+// static void update_frame_age(uint32_t vpage);
 
 frame_t frame_table[MAX_FRAMES];
 deque<uint32_t> free_frame_pool;
@@ -443,7 +443,7 @@ static void parse_args(int argc, char **argv)
 {
     int o;
     const char *optstring = "f:a:o:";
-    char algo;
+    char algo = ' ';
     while ((o = getopt(argc, argv, optstring)) != -1)
     {
         switch (o)
@@ -622,9 +622,9 @@ static void print_process_statistics()
 }
 
 
-static void update_frame_age(uint32_t vpage)
-{
-    for (uint32_t i = 0; i < frames; ++i)
-        frame_table[i].age >>= 1;
-    frame_table[cur_proc->translate(vpage)].age |= 0x80000000;
-}
+// static void update_frame_age(uint32_t vpage)
+// {
+//     for (uint32_t i = 0; i < frames; ++i)
+//         frame_table[i].age >>= 1;
+//     frame_table[cur_proc->translate(vpage)].age |= 0x80000000;
+// }

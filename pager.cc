@@ -44,9 +44,6 @@ uint32_t RandomPager::select_victim_frame()
 /* Aging */
 uint32_t AgingPager::select_victim_frame()
 {
-    uint32_t victim;
-    for (uint32_t i = 0; i < frames; ++i)
-
     return 0;
 }
 
