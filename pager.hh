@@ -38,7 +38,7 @@ class RandomPager : public Pager
 {
 private:
     uint32_t ofs{};
-    std::vector<uint32_t> random_numbers;
+    std::vector<uint64_t> random_numbers;
 public:
     RandomPager(uint32_t & f, std::ifstream & fin);
     virtual uint32_t select_victim_frame() override;
@@ -58,6 +58,7 @@ public:
 class NRUPager : public Pager
 {
 private:
+    bool first{true};
     uint32_t hand{};
     uint32_t pre_inst{};
     /* Before */

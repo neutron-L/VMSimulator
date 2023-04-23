@@ -1,6 +1,8 @@
 #include "pager.hh"
-
+#include <iostream>
 #include <string>
+using std::cout;
+using std::endl;
 using std::ifstream;
 using std::string;
 using std::vector;
@@ -34,6 +36,7 @@ uint32_t RandomPager::select_victim_frame()
 {
     uint32_t idx = ofs;
     ofs = (ofs + 1) % random_numbers.size();
+    // cout << random_numbers[idx] % frames << endl; 
     return random_numbers[idx] % frames;
 }
 
@@ -53,9 +56,10 @@ uint32_t NRUPager::select_victim_frame()
     steps = 0;
     pre_hand = hand;
     lowest_class = 4;
-    
-    if (inst_count - pre_inst >= 50)
+
+    if (inst_count - pre_inst >= 50 || first)
     {
+        first = false;
         reset = 1;
         pre_inst = inst_count;
     }
@@ -70,22 +74,20 @@ uint32_t NRUPager::select_victim_frame()
         // update victim
         if (lowest_class > c)
         {
-            if (lowest_class == 4)
-                victim = hand;
             lowest_class = c;
+            victim = hand;
         }
-        
         if (reset)
             reset_rbit(hand);
         hand = (hand + 1) % frames;
         ++steps;
         // break
-        if (hand == pre_hand && (lowest_class == 0 || reset))
+        if (((lowest_class == 0 || hand == pre_hand) && !reset) ||  (hand == pre_hand && reset))
             break;
     }
-   
+    hand = (victim + 1) % frames;
 
-    return 0;
+    return victim;
 }
 
 

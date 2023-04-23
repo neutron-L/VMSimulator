@@ -205,7 +205,7 @@ void reset_rbit(uint32_t idx);
 
 /* For pager to access the reference of */
 // input variable: number of frames and processes
-uint32_t frames = 16;
+uint32_t frames;
 uint32_t num_of_tasks;
 
 frame_t frame_table[MAX_FRAMES];
@@ -229,7 +229,6 @@ int main(int argc, char **argv)
         free_frame_pool.insert(i);
     for (auto &frame : frame_table)
         frame.proc_id = -1;
-    pager = new FifoPager(frames);
 
     // 3. read process info
     ifstream fs(infile);
@@ -337,7 +336,6 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
 
     // get a new frame
     uint32_t idx = get_frame();
-
     // unmap frame
     auto pid = frame_table[idx].proc_id;
     if (pid != -1)
@@ -400,6 +398,9 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
     proc.step_msg += " MAP " + to_string(idx) + "\n";
     cost += 350;
     ++proc.pstats.maps;
+    frame_table[idx].proc_id = cur_procid;
+    frame_table[idx].vpage = vpage;
+
 
     return true;
 }
