@@ -10,27 +10,6 @@
 #include <cstring>
 using namespace std;
 
-/* Constant */
-extern const int MAX_FRAMES = 128;
-extern const int MAX_VPAGES = 64;
-
-/* Class definition */
-using pte_t = struct
-{
-    uint32_t present : 1;
-    uint32_t refer : 1;
-    uint32_t modified : 1;
-    uint32_t write_prot : 1;
-    uint32_t pagedout : 1;
-    uint32_t fmapped : 1;
-    uint32_t frame_num : 7;
-}; // pte type
-
-using frame_t = struct
-{
-    int proc_id; // if proc_id is -1, means it has not been mapped to a vpage
-    uint32_t vpage;
-}; // freme type <proc_id:vpage>
 
 /* static functions */
 static void parse_args(int argc, char **argv);
@@ -157,17 +136,23 @@ public:
 
     void exit_proc()
     {
+        for (auto & pte : page_table)
+        {
+            if (pte.present)
+            {
+
+            }
+        }
     }
 
     void print_step_msg()
     {
         cout << step_msg;
-        step_msg = "";
     }
 
-    void print_28()
+    void clear_step_msg()
     {
-        cout << page_table[28].pagedout << endl;
+        step_msg = "";
     }
 }; // process type
 
@@ -175,6 +160,8 @@ public:
 bool page_fault_exception_handler(Process &proc, uint32_t vpage);
 void context_switch(uint32_t procid);
 
+
+/* For pager to access the reference of */
 // input variable: number of frames and processes
 uint32_t frames = 16;
 uint32_t num_of_tasks;
@@ -270,7 +257,18 @@ int main(int argc, char **argv)
             printf("%ld: ==> %c %d\n", inst_count, op, num);
             cur_proc->print_step_msg();
         }
+        if (x_flag)
+            cur_proc->print_page_table();
+        if (y_flag)
+            print_page_table();
+        if (f_flag)
+            print_frame_table();
+        if (a_flag)
+        {
+
+        }
         ++inst_count;
+        cur_proc->clear_step_msg();
     }
     if (P_flag)
         print_page_table();
