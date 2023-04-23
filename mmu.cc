@@ -2,7 +2,7 @@
 #include <fstream>
 #include <sstream>
 #include <vector>
-#include <set>
+#include <deque>
 #include <cassert>
 #include <unistd.h>
 
@@ -30,7 +30,8 @@ using pte_t = struct
 using frame_t = struct
 {
     int proc_id; // if proc_id is -1, means it has not been mapped to a vpage
-    uint32_t vpage;
+    uint32_t vpage{};
+    uint32_t age{};
 }; // freme type <proc_id:vpage>
 
 /* static functions */
@@ -41,6 +42,10 @@ static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t
 static void print_page_table();
 static void print_frame_table();
 static void print_process_statistics();
+static void update_frame_age(uint32_t vpage);
+
+frame_t frame_table[MAX_FRAMES];
+deque<uint32_t> free_frame_pool;
 
 /* global variables */
 // statistics
@@ -94,12 +99,15 @@ protected:
     }
 
 private:
+    uint32_t pid;
     pte_t page_table[MAX_VPAGES]{};
     vector<VMA> vmas{};
     Status pstats{};
     string step_msg; // if O_flag is set, output it after each instruction is executed
 
 public:
+    Process(uint32_t id) : pid(id) {}
+
     void do_access(uint32_t vpage, bool is_write)
     {
         /*
@@ -172,15 +180,35 @@ public:
         page_table[vpage].refer = 0;
     }
 
+    uint32_t translate(uint32_t vpage) const
+    {
+        return page_table[vpage].frame_num;
+    }
+
     void exit_proc()
     {
-        for (auto & pte : page_table)
+        step_msg += "EXIT current process " + to_string(pid) + "\n";
+        for (uint32_t i = 0; i < MAX_VPAGES; ++i)
         {
+            pte_t & pte = page_table[i];
             if (pte.present)
             {
+                step_msg += " UNMAP " + to_string(pid) + ":" + to_string(i) + "\n";
+                ++pstats.unmaps;
+                cost += 410;
 
+                if (pte.modified && pte.fmapped)
+                {
+                    ++pstats.fouts;
+                    cost += 2800;
+                    step_msg += " FOUT\n";
+                }
+                frame_table[pte.frame_num].proc_id = -1; // clear
+                free_frame_pool.push_back(pte.frame_num);
             }
         }
+        // clear page table
+        memset(page_table, 0, sizeof(page_table));
     }
 
     void print_step_msg()
@@ -208,12 +236,10 @@ void reset_rbit(uint32_t idx);
 uint32_t frames;
 uint32_t num_of_tasks;
 
-frame_t frame_table[MAX_FRAMES];
 vector<Process> proc_vec;
 Process *cur_proc;
 uint32_t cur_procid;
 Pager *pager;
-set<uint32_t> free_frame_pool;
 
 // flag
 bool O_flag, P_flag, F_flag, S_flag, x_flag, y_flag, f_flag, a_flag;
@@ -226,7 +252,7 @@ int main(int argc, char **argv)
 
     // 2. initialize the free frame pool, frame table and pager
     for (uint32_t i = 0; i < frames; ++i)
-        free_frame_pool.insert(i);
+        free_frame_pool.push_back(i);
     for (auto &frame : frame_table)
         frame.proc_id = -1;
 
@@ -243,12 +269,13 @@ int main(int argc, char **argv)
 
     get_next_line(fs, sin);
     sin >> num_of_tasks; // read number of processes
-    proc_vec.resize(num_of_tasks);
+    proc_vec.reserve(num_of_tasks);
 
     // read process
     uint32_t s, e, w, f;
-    for (auto &proc : proc_vec)
+    for (uint32_t i = 0; i < num_of_tasks; ++i)
     {
+        Process proc(i);
         get_next_line(fs, sin);
         sin >> num_of_vmas;
         // read process vmas
@@ -261,6 +288,7 @@ int main(int argc, char **argv)
             sin >> f;
             proc.add_vma(s, e, w, f);
         }
+        proc_vec.push_back(proc);
     }
 
     // 4. read instruction
@@ -372,6 +400,9 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
     pte.fmapped = proc.vmas[vma_idx].filemapped;
     pte.write_prot = proc.vmas[vma_idx].write_prot;
 
+    // map
+    pte.frame_num = idx;
+
     // reverse map
     frame_table[idx].proc_id = cur_procid;
     frame_table[idx].vpage = vpage;
@@ -397,9 +428,6 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
     proc.step_msg += " MAP " + to_string(idx) + "\n";
     cost += 350;
     ++proc.pstats.maps;
-    frame_table[idx].proc_id = cur_procid;
-    frame_table[idx].vpage = vpage;
-
 
     return true;
 }
@@ -515,8 +543,8 @@ static int get_frame()
 
     if (!free_frame_pool.empty())
     {
-        fidx = *free_frame_pool.begin();
-        free_frame_pool.erase(fidx);
+        fidx = free_frame_pool.front();
+        free_frame_pool.pop_front();
     }
     else
         fidx = pager->select_victim_frame();
@@ -591,4 +619,12 @@ static void print_process_statistics()
     }
     printf("TOTALCOST %lu %lu %lu %llu %lu\n",
            inst_count, ctx_switches, process_exits, cost, sizeof(pte_t));
+}
+
+
+static void update_frame_age(uint32_t vpage)
+{
+    for (uint32_t i = 0; i < frames; ++i)
+        frame_table[i].age >>= 1;
+    frame_table[cur_proc->translate(vpage)].age |= 0x80000000;
 }

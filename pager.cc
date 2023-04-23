@@ -1,5 +1,6 @@
 #include "pager.hh"
 #include <iostream>
+#include <vector>
 #include <string>
 using std::cout;
 using std::endl;
@@ -43,6 +44,9 @@ uint32_t RandomPager::select_victim_frame()
 /* Aging */
 uint32_t AgingPager::select_victim_frame()
 {
+    uint32_t victim;
+    for (uint32_t i = 0; i < frames; ++i)
+
     return 0;
 }
 
@@ -53,15 +57,12 @@ void AgingPager::print_info() const
 /* ESCPager */
 uint32_t NRUPager::select_victim_frame()
 {
-    static bool first = true;
-
     steps = 0;
     pre_hand = hand;
     lowest_class = 4;
 
-    if (inst_count - pre_inst >= 50 || first)
+    if (inst_count - pre_inst >= 50)
     {
-        first = false;
         reset = 1;
         pre_inst = inst_count;
     }
