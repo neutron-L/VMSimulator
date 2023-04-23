@@ -328,7 +328,10 @@ int main(int argc, char **argv)
             cur_proc->print_step_msg();
         }
         if (x_flag)
+        {
             cur_proc->print_page_table();
+            cout << endl;
+        }
         if (y_flag)
             print_page_table();
         if (f_flag)

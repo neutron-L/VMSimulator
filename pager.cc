@@ -58,7 +58,7 @@ uint32_t NRUPager::select_victim_frame()
     pre_hand = hand;
     lowest_class = 4;
 
-    if (inst_count - pre_inst >= 50)
+    if (inst_count == 49 || inst_count - pre_inst >= 50)
     {
         reset = 1;
         pre_inst = inst_count;
@@ -129,3 +129,6 @@ uint32_t WorkingSetPager::select_victim_frame()
 void WorkingSetPager::print_info() const
 {
 }
+
+// PT[0]: * * 2:-M- * * 5:-M- * # 8:R-- * * * 12:-M- 13:-M- * 15:-M- * * * * 20:-MS * 22:R-- 23:-MS * 25:-M- * * * 29:-M- * * * # * * 36:R-- # * 39:-M- * * * * * * * * * * * 51:-M- * 53:-M- 54:-M- * * * * * * * # *
+// PT[0]: * * 2:-M- * * 5:-M- * # 8:R-- * * * 12:-M- 13:-M- * 15:-M- * * * * 20:-MS * 22:--- 23:-MS * 25:-M- * * * 29:-M- * * * # * * 36:R-- # * 39:-M- * * * * * * * * * * * 51:-M- * 53:-M- 54:-M- * * * * * * * # *
