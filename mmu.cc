@@ -11,6 +11,28 @@
 using namespace std;
 
 
+/* Constant */
+const int MAX_FRAMES = 128;
+const int MAX_VPAGES = 64;
+
+/* Class definition */
+using pte_t = struct
+{
+    uint32_t present : 1;
+    uint32_t refer : 1;
+    uint32_t modified : 1;
+    uint32_t write_prot : 1;
+    uint32_t pagedout : 1;
+    uint32_t fmapped : 1;
+    uint32_t frame_num : 7;
+}; // pte type
+
+using frame_t = struct
+{
+    int proc_id; // if proc_id is -1, means it has not been mapped to a vpage
+    uint32_t vpage;
+}; // freme type <proc_id:vpage>
+
 /* static functions */
 static void parse_args(int argc, char **argv);
 static int get_frame();
@@ -134,6 +156,17 @@ public:
                pstats.fins, pstats.fouts, pstats.zeros, pstats.segv, pstats.segprot);
     }
 
+    // for pager algorithm
+    uint32_t get_rbit(uint32_t vpage) const
+    {
+        return page_table[vpage].refer;
+    }
+
+    void reset_rbit(uint32_t vpage)
+    {
+        page_table[vpage].refer = 0;
+    }
+
     void exit_proc()
     {
         for (auto & pte : page_table)
@@ -160,6 +193,9 @@ public:
 bool page_fault_exception_handler(Process &proc, uint32_t vpage);
 void context_switch(uint32_t procid);
 
+/* For Pager use */
+uint32_t get_rbit(uint32_t idx);
+void reset_rbit(uint32_t idx);
 
 /* For pager to access the reference of */
 // input variable: number of frames and processes
@@ -265,7 +301,7 @@ int main(int argc, char **argv)
             print_frame_table();
         if (a_flag)
         {
-
+            pager->print_info();
         }
         ++inst_count;
         cur_proc->clear_step_msg();
@@ -444,6 +480,19 @@ static void parse_args(int argc, char **argv)
     default:
         break;
     }
+}
+
+/* Clock Pager */
+uint32_t get_rbit(uint32_t idx)
+{
+    int id = frame_table[idx].proc_id;
+    assert(id != -1);
+    return proc_vec[id].get_rbit(frame_table[idx].vpage);
+}
+
+void reset_rbit(uint32_t idx)
+{
+    proc_vec[frame_table[idx].proc_id].reset_rbit(frame_table[idx].vpage);
 }
 
 static int get_frame()

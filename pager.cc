@@ -15,11 +15,11 @@ uint32_t FifoPager::select_victim_frame()
 
 void FifoPager::print_info() const
 {
-    printf(" ASELECT: %lu\n", hand);
+    printf(" ASELECT: %u\n", hand);
 }
 
 /* Random */ 
-RandomPager::RandomPager(uint32_t & f, ifstream & fin) : frames(f)
+RandomPager::RandomPager(uint32_t & f, ifstream & fin) : Pager(f)
 {
     uint32_t n;
     fin >> n;
@@ -43,6 +43,9 @@ uint32_t AgingPager::select_victim_frame()
     return 0;
 }
 
+void AgingPager::print_info() const
+{
+}
 
 /* ESCPager */
 uint32_t NRUPager::select_victim_frame()
@@ -51,17 +54,31 @@ uint32_t NRUPager::select_victim_frame()
 }
 
 
+void NRUPager::print_info() const
+{
+}
+
+
 /* ClockPager */
 uint32_t ClockPager::select_victim_frame()
 {
     steps = 0;
-    return 0;
+    while (get_rbit(hand))
+    {
+        reset_rbit(hand);
+        hand = (hand + 1) % frames;
+        ++steps;
+    }
+    uint32_t idx = hand;
+    hand = (hand + 1) % frames;
+
+    return idx;
 }
 
 
 void ClockPager::print_info() const
 {
-    printf(" ASELECT: %lu %lu\n", hand, steps);
+    printf(" ASELECT: %u %u\n", hand, steps);
 }
 
 
@@ -69,4 +86,8 @@ void ClockPager::print_info() const
 uint32_t WorkingSetPager::select_victim_frame()
 {
     return 0;
+}
+
+void WorkingSetPager::print_info() const
+{
 }
