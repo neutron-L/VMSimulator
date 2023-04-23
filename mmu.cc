@@ -42,7 +42,7 @@ static bool get_next_instruction(ifstream &, istringstream &, char &op, uint32_t
 static void print_page_table();
 static void print_frame_table();
 static void print_process_statistics();
-// static void update_frame_age(uint32_t vpage);
+void update_frame_age();
 
 frame_t frame_table[MAX_FRAMES];
 deque<uint32_t> free_frame_pool;
@@ -230,6 +230,7 @@ void context_switch(uint32_t procid);
 uint32_t get_rbit(uint32_t idx);
 uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
+uint32_t get_frame_age(uint32_t);
 
 /* For pager to access the reference of */
 // input variable: number of frames and processes
@@ -337,7 +338,10 @@ int main(int argc, char **argv)
         if (f_flag)
             print_frame_table();
         if (a_flag)
+        {
             pager->print_info();
+            cout << endl;
+        }
         ++inst_count;
         cur_proc->clear_step_msg();
     }
@@ -409,6 +413,8 @@ bool page_fault_exception_handler(Process &proc, uint32_t vpage)
     // reverse map
     frame_table[idx].proc_id = cur_procid;
     frame_table[idx].vpage = vpage;
+    // clear age
+    frame_table[idx].age = 0;
 
     if (pte.fmapped)
     {
@@ -447,6 +453,7 @@ static void parse_args(int argc, char **argv)
     int o;
     const char *optstring = "f:a:o:";
     char algo = ' ';
+
     while ((o = getopt(argc, argv, optstring)) != -1)
     {
         switch (o)
@@ -487,7 +494,7 @@ static void parse_args(int argc, char **argv)
     switch (algo)
     {
     case 'a':
-        // pager = new AgingPager();
+        pager = new AgingPager(frames);
         break;
     case 'c':
         pager = new ClockPager(frames);
@@ -530,6 +537,12 @@ uint32_t get_rbit(uint32_t idx)
 void reset_rbit(uint32_t idx)
 {
     proc_vec[frame_table[idx].proc_id].reset_rbit(frame_table[idx].vpage);
+}
+
+uint32_t get_frame_age(uint32_t idx)
+{
+    assert(frame_table[idx].proc_id != -1);
+    return frame_table[idx].age;
 }
 
 /* NRU Pager */
@@ -625,9 +638,13 @@ static void print_process_statistics()
 }
 
 
-// static void update_frame_age(uint32_t vpage)
-// {
-//     for (uint32_t i = 0; i < frames; ++i)
-//         frame_table[i].age >>= 1;
-//     frame_table[cur_proc->translate(vpage)].age |= 0x80000000;
-// }
+void update_frame_age()
+{
+    for (uint32_t i = 0; i < frames; ++i)
+        if (frame_table[i].proc_id != -1)
+        {
+            frame_table[i].age >>= 1;
+            frame_table[i].age |= get_rbit(i) << 31;
+            reset_rbit(i);
+        }
+}

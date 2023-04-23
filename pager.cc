@@ -1,14 +1,24 @@
 #include "pager.hh"
 #include <iostream>
+#include <sstream>
 #include <vector>
 #include <string>
+#include <iomanip>
 using std::cout;
 using std::endl;
 using std::ifstream;
 using std::string;
 using std::vector;
+using std::to_string;
 
 extern uint32_t inst_count;
+
+static string to_hex(uint32_t num)
+{
+    std::ostringstream ss;
+    ss << "0x" << std::setfill('0') << std::setw(8) << std::hex << num;
+    return ss.str();
+}
 
 /* FIFO */ 
 uint32_t FifoPager::select_victim_frame()
@@ -18,9 +28,9 @@ uint32_t FifoPager::select_victim_frame()
     return idx;
 }
 
-void FifoPager::print_info() const
+void FifoPager::print_info()
 {
-    printf(" ASELECT: %u\n", hand);
+    printf(" ASELECT: %u", hand);
 }
 
 /* Random */ 
@@ -44,11 +54,31 @@ uint32_t RandomPager::select_victim_frame()
 /* Aging */
 uint32_t AgingPager::select_victim_frame()
 {
-    return 0;
+    update_frame_age();
+
+
+    uint32_t cnt = frames - 1;
+
+    msg = " ASELECT " + to_string(hand) + "-" + to_string((hand - 1 + frames) % frames) + " | ";
+    msg += to_string(hand) + ":" + to_hex(get_frame_age(hand)) + " ";
+    victim = hand;
+    while (cnt--)
+    {
+        hand = (hand + 1) % frames;
+        msg += to_string(hand) + ":" + to_hex(get_frame_age(hand)) + " ";
+        if (get_frame_age(hand) < get_frame_age(victim))
+            victim = hand;
+    }
+    hand = (victim + 1) % frames;
+    msg += "| " + to_string(victim);
+    
+    return victim;
 }
 
-void AgingPager::print_info() const
+void AgingPager::print_info()
 {
+    cout << msg;
+    msg = "";
 }
 
 /* ESCPager */
@@ -91,9 +121,9 @@ uint32_t NRUPager::select_victim_frame()
 }
 
 
-void NRUPager::print_info() const
+void NRUPager::print_info()
 {
-    printf(" ASELECT: %u %u | %u %u %u\n", pre_hand, reset, lowest_class, victim, steps);
+    printf(" ASELECT: %u %u | %u %u %u", pre_hand, reset, lowest_class, victim, steps);
 }
 
 
@@ -114,9 +144,9 @@ uint32_t ClockPager::select_victim_frame()
 }
 
 
-void ClockPager::print_info() const
+void ClockPager::print_info()
 {
-    printf(" ASELECT: %u %u\n", hand, steps);
+    printf(" ASELECT: %u %u", hand, steps);
 }
 
 
@@ -126,9 +156,6 @@ uint32_t WorkingSetPager::select_victim_frame()
     return 0;
 }
 
-void WorkingSetPager::print_info() const
+void WorkingSetPager::print_info()
 {
 }
-
-// PT[0]: * * 2:-M- * * 5:-M- * # 8:R-- * * * 12:-M- 13:-M- * 15:-M- * * * * 20:-MS * 22:R-- 23:-MS * 25:-M- * * * 29:-M- * * * # * * 36:R-- # * 39:-M- * * * * * * * * * * * 51:-M- * 53:-M- 54:-M- * * * * * * * # *
-// PT[0]: * * 2:-M- * * 5:-M- * # 8:R-- * * * 12:-M- 13:-M- * 15:-M- * * * * 20:-MS * 22:--- 23:-MS * 25:-M- * * * 29:-M- * * * # * * 36:R-- # * 39:-M- * * * * * * * * * * * 51:-M- * 53:-M- 54:-M- * * * * * * * # *

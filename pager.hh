@@ -11,7 +11,8 @@
 uint32_t get_rbit(uint32_t idx);
 uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
-
+void update_frame_age();
+uint32_t get_frame_age(uint32_t);
 
 /* Abstract Pager Class */
 class Pager
@@ -22,7 +23,7 @@ public:
     Pager()=default;
     Pager(uint32_t & f) : frames(f) {}
     virtual uint32_t select_victim_frame() = 0;
-    virtual void print_info() const = 0;
+    virtual void print_info() = 0;
 
     virtual ~Pager()=default;
 };
@@ -34,7 +35,7 @@ protected:
 public:
     FifoPager(uint32_t & f) : Pager(f) {}
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override;
+    virtual void print_info() override;
 };
 
 class RandomPager : public Pager
@@ -45,16 +46,20 @@ private:
 public:
     RandomPager(uint32_t & f, std::ifstream & fin);
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override
+    virtual void print_info() override
     {}
 };
 
 class AgingPager : public Pager
 {
+private:
+    uint32_t hand{};
+    uint32_t victim{};
+    std::string msg{};
 public:
-    AgingPager(uint32_t & f);
+    AgingPager(uint32_t & f) : Pager(f) {}
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override;
+    virtual void print_info() override;
 };
 
 
@@ -74,7 +79,7 @@ private:
 public:
     NRUPager(uint32_t & f) : Pager(f) {}
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override;
+    virtual void print_info() override;
 };
 
 class ClockPager : public FifoPager
@@ -84,14 +89,14 @@ private:
 public:
     ClockPager(uint32_t & f) : FifoPager(f) {}
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override;
+    virtual void print_info() override;
 };
 
 class WorkingSetPager : public Pager
 {
 public:
     virtual uint32_t select_victim_frame() override;
-    virtual void print_info() const override;
+    virtual void print_info() override;
 };
 
 #endif
