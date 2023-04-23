@@ -234,6 +234,7 @@ int main(int argc, char **argv)
     ifstream fs(infile);
     if (!fs.is_open())
     {
+        cerr << "Fail to open file " << infile << endl;
         exit(1);
     }
     istringstream sin;
@@ -305,9 +306,7 @@ int main(int argc, char **argv)
         if (f_flag)
             print_frame_table();
         if (a_flag)
-        {
             pager->print_info();
-        }
         ++inst_count;
         cur_proc->clear_step_msg();
     }

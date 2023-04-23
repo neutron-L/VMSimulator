@@ -53,6 +53,8 @@ void AgingPager::print_info() const
 /* ESCPager */
 uint32_t NRUPager::select_victim_frame()
 {
+    static bool first = true;
+
     steps = 0;
     pre_hand = hand;
     lowest_class = 4;
