@@ -162,6 +162,11 @@ public:
         return page_table[vpage].refer;
     }
 
+    uint32_t get_mbit(uint32_t vpage) const
+    {
+        return page_table[vpage].modified;
+    }
+
     void reset_rbit(uint32_t vpage)
     {
         page_table[vpage].refer = 0;
@@ -195,6 +200,7 @@ void context_switch(uint32_t procid);
 
 /* For Pager use */
 uint32_t get_rbit(uint32_t idx);
+uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
 
 /* For pager to access the reference of */
@@ -453,10 +459,10 @@ static void parse_args(int argc, char **argv)
         // pager = new AgingPager();
         break;
     case 'c':
-        // pager = new ClockPager();
+        pager = new ClockPager(frames);
         break;
     case 'e':
-        // pager = new ESCPager();
+        pager = new NRUPager(frames);
         break;
     case 'f':
         pager = new FifoPager(frames);
@@ -493,6 +499,14 @@ uint32_t get_rbit(uint32_t idx)
 void reset_rbit(uint32_t idx)
 {
     proc_vec[frame_table[idx].proc_id].reset_rbit(frame_table[idx].vpage);
+}
+
+/* NRU Pager */
+uint32_t get_mbit(uint32_t idx)
+{
+    int id = frame_table[idx].proc_id;
+    assert(id != -1);
+    return proc_vec[id].get_mbit(frame_table[idx].vpage);
 }
 
 static int get_frame()

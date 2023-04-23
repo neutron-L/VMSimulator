@@ -9,6 +9,7 @@
 
 //
 uint32_t get_rbit(uint32_t idx);
+uint32_t get_mbit(uint32_t idx);
 void reset_rbit(uint32_t idx);
 
 /* Abstract Pager Class */
@@ -56,6 +57,16 @@ public:
 
 class NRUPager : public Pager
 {
+private:
+    uint32_t hand{};
+    uint32_t pre_inst{};
+    /* Before */
+    uint32_t pre_hand{};
+    uint32_t reset{};
+    /* After */
+    uint32_t lowest_class{};
+    uint32_t victim{};
+    uint32_t steps{};
 public:
     NRUPager(uint32_t & f) : Pager(f) {}
     virtual uint32_t select_victim_frame() override;
@@ -67,7 +78,7 @@ class ClockPager : public FifoPager
 private:
     uint32_t steps{};
 public:
-    ClockPager(uint32_t & f);
+    ClockPager(uint32_t & f) : FifoPager(f) {}
     virtual uint32_t select_victim_frame() override;
     virtual void print_info() const override;
 };

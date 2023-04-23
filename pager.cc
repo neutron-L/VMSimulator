@@ -5,6 +5,8 @@ using std::ifstream;
 using std::string;
 using std::vector;
 
+extern uint32_t inst_count;
+
 /* FIFO */ 
 uint32_t FifoPager::select_victim_frame()
 {
@@ -35,8 +37,6 @@ uint32_t RandomPager::select_victim_frame()
     return random_numbers[idx] % frames;
 }
 
-
-
 /* Aging */
 uint32_t AgingPager::select_victim_frame()
 {
@@ -50,12 +50,48 @@ void AgingPager::print_info() const
 /* ESCPager */
 uint32_t NRUPager::select_victim_frame()
 {
+    steps = 0;
+    pre_hand = hand;
+    lowest_class = 4;
+    
+    if (inst_count - pre_inst >= 50)
+    {
+        reset = 1;
+        pre_inst = inst_count;
+    }
+    else
+        reset = 0;
+
+    while (true)
+    {
+         // get class of the frame
+        uint32_t c = (get_rbit(hand) << 1) | (get_mbit(hand));
+
+        // update victim
+        if (lowest_class > c)
+        {
+            if (lowest_class == 4)
+                victim = hand;
+            lowest_class = c;
+        }
+        
+        if (reset)
+            reset_rbit(hand);
+        hand = (hand + 1) % frames;
+        ++steps;
+        // break
+        if (hand == pre_hand && (lowest_class == 0 || reset))
+            break;
+    }
+   
+
     return 0;
 }
 
 
 void NRUPager::print_info() const
 {
+    printf(" ASELECT: %u %u | %u %u %u\n", pre_hand, reset, lowest_class, victim, steps);
 }
 
 
