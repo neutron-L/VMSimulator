@@ -156,8 +156,11 @@ uint32_t WorkingSetPager::select_victim_frame()
     uint32_t start = hand;
     victim = hand;
 
+    msg = "";
+
     while (true)
     {
+        msg += to_string(hand) + "(" + to_string(get_rbit(hand)) + to_string(get_proc(hand)) + ":" + to_string(get_vpage(hand)) + " " + to_string(get_frame_timelastuse(hand)) + ") ";
         // check refer bit
         if (get_rbit(hand))
         {
@@ -179,6 +182,7 @@ uint32_t WorkingSetPager::select_victim_frame()
         if (hand == start)
             break;
     }
+    msg = to_string(start) + " " + to_string(hand == start ? (hand - 1 + frames) % frames : hand) + " | " + msg + "| " + to_string(victim);
     hand = (victim + 1) % frames;
 
     return victim;
@@ -186,4 +190,6 @@ uint32_t WorkingSetPager::select_victim_frame()
 
 void WorkingSetPager::print_info()
 {
+    cout << msg;
+    msg = "";
 }

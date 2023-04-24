@@ -17,6 +17,9 @@ uint32_t get_frame_age(uint32_t);
 uint32_t get_frame_timelastuse(uint32_t);
 void set_frame_timelastuse(uint32_t, uint32_t);
 
+int get_proc(uint32_t);
+uint32_t get_vpage(uint32_t);
+
 /* Abstract Pager Class */
 class Pager
 {
@@ -100,6 +103,7 @@ class WorkingSetPager : public Pager
 private:
     uint32_t hand{};
     uint32_t victim{};
+    std::string msg{};
 public:
     WorkingSetPager(uint32_t & f) : Pager(f) {}
     virtual uint32_t select_victim_frame() override;

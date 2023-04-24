@@ -237,6 +237,8 @@ uint32_t get_frame_timelastuse(uint32_t);
 void set_frame_timelastuse(uint32_t, uint32_t);
 
 
+int get_proc(uint32_t);
+uint32_t get_vpage(uint32_t);
 
 /* For pager to access the reference of */
 // input variable: number of frames and processes
@@ -669,4 +671,17 @@ void set_frame_timelastuse(uint32_t idx, uint32_t time)
 {
     assert(frame_table[idx].proc_id != -1);
     frame_table[idx].timelastuse = time;
+}
+
+
+
+int get_proc(uint32_t idx)
+{
+    assert(frame_table[idx].proc_id != -1);
+    return frame_table[idx].proc_id;
+}
+
+uint32_t get_vpage(uint32_t idx)
+{
+    return frame_table[idx].timelastuse;
 }
